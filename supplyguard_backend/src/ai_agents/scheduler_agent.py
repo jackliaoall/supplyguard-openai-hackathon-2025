@@ -1,6 +1,6 @@
 """
-排程分析代理
-負責分析設備交付排程的風險
+Schedule Analysis Agent
+Responsible for analyzing equipment delivery schedule risks
 """
 import sys
 import os
@@ -12,41 +12,130 @@ from src.ai_agents.base_agent import BaseAgent
 from src.models.supply_chain import Schedule, Equipment
 
 class SchedulerAgent(BaseAgent):
-    """排程分析代理"""
-    
+    """Schedule Analysis Agent"""
+
     def __init__(self):
         super().__init__(
             name="SCHEDULER_AGENT",
-            description="分析設備交付排程的風險，識別潛在延遲和時間表問題"
+            description="Analyze equipment delivery schedule risks, identify potential delays and timeline issues"
         )
     
     def analyze(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        分析排程風險
-        
+        Analyze schedule risks
+
         Args:
-            data: 包含排程資訊的數據
-            
+            data: Data containing schedule information
+
         Returns:
-            排程風險分析結果
+            Schedule risk analysis results
         """
-        self.log_thinking("開始分析排程風險...")
-        
-        # 獲取所有排程數據
+        self.log_thinking("Starting schedule risk analysis...")
+
+        # Get all schedule data
         schedules = Schedule.query.all()
-        
+
         if not schedules:
             return self.format_response(
                 analysis_type='schedule',
                 risk_level='low',
                 risk_score=0,
-                summary='沒有找到排程數據',
+                summary='No schedule data found',
                 details={'total_schedules': 0},
-                recommendations=['添加排程數據以進行分析']
+                recommendations=['Add schedule data for analysis']
             )
-        
-        # 分析排程風險
-        analysis_results = self._analyze_schedules(schedules)
+
+        # Prepare context for AI analysis
+        context = self._prepare_schedule_context(schedules)
+
+        # Create analysis query
+        query = f"Analyze the delivery schedule risks for {len(schedules)} equipment schedules. Identify delays, bottlenecks, and potential timeline issues."
+
+        # Use AI service for analysis
+        ai_result = self.analyze_with_ai(query, context)
+
+        # Combine AI results with traditional analysis
+        traditional_analysis = self._analyze_schedules(schedules)
+
+        # Merge AI insights with traditional analysis
+        return self._merge_analysis_results(ai_result, traditional_analysis, schedules)
+
+    def _prepare_schedule_context(self, schedules: List[Schedule]) -> Dict[str, Any]:
+        """Prepare context information for AI analysis"""
+        now = datetime.now()
+
+        # Categorize schedules
+        delayed_schedules = []
+        upcoming_schedules = []
+        critical_schedules = []
+
+        for schedule in schedules:
+            if schedule.delivery_date < now and schedule.status != 'completed':
+                delayed_schedules.append({
+                    'id': schedule.id,
+                    'equipment_name': schedule.equipment.name if schedule.equipment else 'Unknown',
+                    'delivery_date': schedule.delivery_date.strftime('%Y-%m-%d'),
+                    'status': schedule.status,
+                    'days_overdue': (now - schedule.delivery_date).days
+                })
+            elif schedule.delivery_date <= now + timedelta(days=7):
+                upcoming_schedules.append({
+                    'id': schedule.id,
+                    'equipment_name': schedule.equipment.name if schedule.equipment else 'Unknown',
+                    'delivery_date': schedule.delivery_date.strftime('%Y-%m-%d'),
+                    'status': schedule.status,
+                    'days_until_delivery': (schedule.delivery_date - now).days
+                })
+
+            if schedule.priority == 'high' or schedule.status == 'at_risk':
+                critical_schedules.append({
+                    'id': schedule.id,
+                    'equipment_name': schedule.equipment.name if schedule.equipment else 'Unknown',
+                    'priority': schedule.priority,
+                    'status': schedule.status
+                })
+
+        return {
+            'total_schedules': len(schedules),
+            'delayed_schedules': delayed_schedules,
+            'upcoming_schedules': upcoming_schedules,
+            'critical_schedules': critical_schedules,
+            'schedule_data': f"Total: {len(schedules)}, Delayed: {len(delayed_schedules)}, Upcoming: {len(upcoming_schedules)}, Critical: {len(critical_schedules)}"
+        }
+
+    def _merge_analysis_results(self, ai_result: Dict[str, Any], traditional_analysis: Dict[str, Any], schedules: List[Schedule]) -> Dict[str, Any]:
+        """Merge AI analysis with traditional analysis"""
+
+        # Use AI risk assessment if available, otherwise fall back to traditional
+        risk_level = ai_result.get('risk_level', traditional_analysis.get('risk_level', 'medium'))
+        risk_score = ai_result.get('risk_score', traditional_analysis.get('risk_score', 50))
+
+        # Combine summaries
+        ai_summary = ai_result.get('summary', '')
+        traditional_summary = traditional_analysis.get('summary', '')
+        combined_summary = f"{ai_summary} {traditional_summary}".strip()
+
+        # Combine recommendations
+        ai_recommendations = ai_result.get('recommendations', [])
+        traditional_recommendations = traditional_analysis.get('recommendations', [])
+        all_recommendations = ai_recommendations + traditional_recommendations
+
+        # Remove duplicates and limit to top 5
+        unique_recommendations = list(dict.fromkeys(all_recommendations))[:5]
+
+        return self.format_response(
+            analysis_type='schedule',
+            risk_level=risk_level,
+            risk_score=risk_score,
+            summary=combined_summary or f"Analyzed {len(schedules)} equipment schedules",
+            details={
+                **traditional_analysis.get('details', {}),
+                'ai_insights': ai_result.get('key_findings', []),
+                'ai_confidence': ai_result.get('confidence', 75)
+            },
+            recommendations=unique_recommendations,
+            affected_equipment=traditional_analysis.get('affected_equipment', [])
+        )
         
         # 計算整體風險分數
         risk_score = self._calculate_overall_risk_score(analysis_results)

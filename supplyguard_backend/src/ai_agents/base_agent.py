@@ -1,20 +1,28 @@
 """
-AI代理基礎類別
-提供所有AI代理的共同功能和介面
+AI Agent Base Class
+Provides common functionality and interface for all AI agents
 """
 import json
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
+from src.services.ai_service import AIService
 
 class BaseAgent(ABC):
-    """AI代理基礎類別"""
-    
+    """AI Agent Base Class"""
+
     def __init__(self, name: str, description: str):
         self.name = name
         self.description = description
         self.logger = logging.getLogger(f"agent.{name}")
+
+        # Initialize AI service
+        self.ai_service = AIService()
         
     @abstractmethod
     def analyze(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -30,8 +38,25 @@ class BaseAgent(ABC):
         pass
     
     def log_thinking(self, message: str):
-        """記錄代理的思考過程"""
+        """Log agent thinking process"""
         self.logger.info(f"[{self.name}] {message}")
+
+    def analyze_with_ai(self, query: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Perform AI-powered analysis using OpenRouter
+
+        Args:
+            query: Analysis query or request
+            context: Additional context data
+
+        Returns:
+            AI analysis results
+        """
+        # Determine analysis type based on agent name
+        analysis_type = self.name.lower().replace('_agent', '')
+
+        # Use AI service for analysis
+        return self.ai_service.analyze_with_ai(analysis_type, query, context)
         
     def format_response(self, 
                        analysis_type: str,

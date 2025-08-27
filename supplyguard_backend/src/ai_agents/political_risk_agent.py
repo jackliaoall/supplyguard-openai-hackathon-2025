@@ -28,20 +28,101 @@ class PoliticalRiskAgent(BaseAgent):
     
     def analyze(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        分析政治風險
-        
+        Analyze political risks
+
         Args:
-            data: 包含國家或地區資訊的數據
-            
+            data: Data containing country or region information
+
         Returns:
-            政治風險分析結果
+            Political risk analysis results
         """
-        self.log_thinking("開始分析政治風險...")
-        
-        # 獲取政治相關新聞事件
+        self.log_thinking("Starting political risk analysis...")
+
+        # Get political-related news events
         political_events = NewsEvent.query.filter_by(category='political').order_by(
             NewsEvent.published_date.desc()
         ).limit(20).all()
+
+        # Prepare context for AI analysis
+        context = self._prepare_political_context(political_events, data)
+
+        # Create analysis query
+        country = data.get('country', 'global regions')
+        query = f"Analyze political risks affecting supply chain operations in {country}. Consider geopolitical events, policy changes, and their impact on procurement and logistics."
+
+        # Use AI service for analysis
+        ai_result = self.analyze_with_ai(query, context)
+
+        # Combine with traditional analysis
+        traditional_analysis = self._analyze_political_events(political_events, data)
+
+        # Merge results
+        return self._merge_political_analysis(ai_result, traditional_analysis, political_events)
+
+    def _prepare_political_context(self, events: List[NewsEvent], data: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare context for political risk AI analysis"""
+
+        # Categorize events by impact and recency
+        high_impact_events = [e for e in events if e.impact_level == 'high']
+        recent_events = [e for e in events if (datetime.now() - e.published_date).days <= 7]
+
+        # Extract country-specific events
+        target_country = data.get('country')
+        country_events = []
+        if target_country:
+            country_events = [e for e in events if e.country and target_country.lower() in e.country.lower()]
+
+        # Prepare event summaries
+        event_summaries = []
+        for event in events[:10]:  # Top 10 recent events
+            event_summaries.append({
+                'title': event.title,
+                'country': event.country,
+                'impact_level': event.impact_level,
+                'date': event.published_date.strftime('%Y-%m-%d'),
+                'category': event.category
+            })
+
+        return {
+            'total_events': len(events),
+            'high_impact_events': len(high_impact_events),
+            'recent_events': len(recent_events),
+            'country_specific_events': len(country_events),
+            'target_country': target_country,
+            'news_events': f"Analyzing {len(events)} political events, {len(high_impact_events)} high-impact, {len(recent_events)} recent",
+            'event_summaries': event_summaries
+        }
+
+    def _merge_political_analysis(self, ai_result: Dict[str, Any], traditional_analysis: Dict[str, Any], events: List[NewsEvent]) -> Dict[str, Any]:
+        """Merge AI and traditional political risk analysis"""
+
+        # Use AI assessment with traditional fallback
+        risk_level = ai_result.get('risk_level', traditional_analysis.get('risk_level', 'medium'))
+        risk_score = ai_result.get('risk_score', traditional_analysis.get('risk_score', 50))
+
+        # Combine insights
+        ai_summary = ai_result.get('summary', '')
+        traditional_summary = traditional_analysis.get('summary', '')
+        combined_summary = f"{ai_summary} {traditional_summary}".strip()
+
+        # Merge recommendations
+        ai_recommendations = ai_result.get('recommendations', [])
+        traditional_recommendations = traditional_analysis.get('recommendations', [])
+        all_recommendations = ai_recommendations + traditional_recommendations
+        unique_recommendations = list(dict.fromkeys(all_recommendations))[:5]
+
+        return self.format_response(
+            analysis_type='political',
+            risk_level=risk_level,
+            risk_score=risk_score,
+            summary=combined_summary or f"Analyzed {len(events)} political events",
+            details={
+                **traditional_analysis.get('details', {}),
+                'ai_insights': ai_result.get('key_findings', []),
+                'ai_confidence': ai_result.get('confidence', 75)
+            },
+            recommendations=unique_recommendations
+        )
         
         # 獲取所有設備以分析受影響的國家
         equipment_list = Equipment.query.all()

@@ -1,10 +1,12 @@
 import os
 import sys
+import logging
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from flask import Flask, send_from_directory
 from flask_cors import CORS
+from src.config import Config
 from src.models.user import db
 from src.routes.user import user_bp
 from src.routes.supply_chain import supply_chain_bp
@@ -12,7 +14,15 @@ from src.routes.ai_analysis import ai_analysis_bp
 from src.routes.ai_analysis_new import ai_analysis_new_bp
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
-app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT'
+
+# Load configuration
+app.config.from_object(Config)
+
+# Validate configuration and show warnings
+config_warnings = Config.validate_config()
+if config_warnings:
+    for warning in config_warnings:
+        print(f"⚠️  Configuration Warning: {warning}")
 
 # Enable CORS to support frontend cross-origin requests
 CORS(app)
@@ -21,10 +31,6 @@ app.register_blueprint(user_bp, url_prefix='/api')
 app.register_blueprint(supply_chain_bp, url_prefix='/api')
 app.register_blueprint(ai_analysis_bp, url_prefix='/api')
 app.register_blueprint(ai_analysis_new_bp, url_prefix='/api/v2')
-
-# Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.path.dirname(__file__), 'database', 'app.db')}"
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Import all models to ensure they are registered
 from src.models.supply_chain import Equipment, Schedule, RiskAssessment, NewsEvent

@@ -1,5 +1,5 @@
 """
-AI分析相關的API路由 - 整合AI代理
+AI Analysis API Routes - Integrated with AI Agents and OpenRouter
 """
 import sys
 import os
@@ -8,12 +8,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from flask import Blueprint, request, jsonify
 import logging
 from src.ai_agents.agent_orchestrator import AgentOrchestrator
+from src.services.ai_service import AIService
 
 ai_analysis_new_bp = Blueprint('ai_analysis_new', __name__)
 logger = logging.getLogger(__name__)
 
-# 初始化代理協調器
+# Initialize agent orchestrator and AI service
 orchestrator = AgentOrchestrator()
+ai_service = AIService()
 
 @ai_analysis_new_bp.route('/analyze/query', methods=['POST'])
 def analyze_query():
@@ -155,4 +157,35 @@ def analyze_tariff():
     except Exception as e:
         logger.error(f"Error in analyze_tariff: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
+
+@ai_analysis_new_bp.route('/ai/health', methods=['GET'])
+def ai_health_check():
+    """
+    Check AI service health
+    """
+    try:
+        # Check AI service health
+        ai_health = ai_service.health_check()
+
+        # Check orchestrator health
+        orchestrator_health = orchestrator.health_check()
+
+        overall_status = 'healthy' if (
+            ai_health.get('status') == 'healthy' and
+            orchestrator_health.get('overall_health') == 'healthy'
+        ) else 'degraded'
+
+        return jsonify({
+            'overall_status': overall_status,
+            'ai_service': ai_health,
+            'orchestrator': orchestrator_health,
+            'timestamp': ai_health.get('timestamp')
+        })
+
+    except Exception as e:
+        logger.error(f"Error in ai_health_check: {str(e)}")
+        return jsonify({
+            'overall_status': 'unhealthy',
+            'error': str(e)
+        }), 500
 
